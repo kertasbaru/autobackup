@@ -20,13 +20,19 @@ rebuild_apk() {
     log_info "Source: ${decompiled_dir}"
     log_info "Output: ${output_apk}"
 
-    if ! apktool b "$decompiled_dir" -o "$output_apk" --use-aapt2 2>&1; then
+    local build_log
+    build_log=$(mktemp)
+    if ! apktool b "$decompiled_dir" -o "$output_apk" --use-aapt2 > "$build_log" 2>&1; then
         log_warn "Build with --use-aapt2 failed, trying without..."
-        if ! apktool b "$decompiled_dir" -o "$output_apk" 2>&1; then
+        log_debug "Build log: $(cat "$build_log")"
+        if ! apktool b "$decompiled_dir" -o "$output_apk" > "$build_log" 2>&1; then
             log_error "Failed to rebuild APK"
+            log_error "Build log: $(cat "$build_log")"
+            rm -f "$build_log"
             return 1
         fi
     fi
+    rm -f "$build_log"
 
     if [ ! -f "$output_apk" ]; then
         log_error "Output APK not created"

@@ -165,7 +165,7 @@ install_uber_apk_signer() {
     else
         log_info "Downloading uber-apk-signer..."
         wget -q -O "$jar_path" \
-            "https://github.com/nicholasgasior/uber-apk-signer/releases/download/v${version}/uber-apk-signer-${version}.jar" 2>/dev/null \
+            "https://github.com/nicholasgasior/uber-apk-signer/releases/latest/download/uber-apk-signer.jar" 2>/dev/null \
             || log_warn "uber-apk-signer download failed; will use standard apksigner instead."
     fi
 }

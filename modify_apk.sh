@@ -195,10 +195,15 @@ decompile_apk() {
     # Remove existing decompiled directory
     rm -rf "$output_dir"
 
-    if ! apktool d "$apk" -o "$output_dir" -f 2>&1; then
+    local decompile_log
+    decompile_log=$(mktemp)
+    if ! apktool d "$apk" -o "$output_dir" -f > "$decompile_log" 2>&1; then
         log_error "Failed to decompile APK"
+        log_error "apktool output: $(cat "$decompile_log")"
+        rm -f "$decompile_log"
         return 1
     fi
+    rm -f "$decompile_log"
 
     if [ ! -d "${output_dir}/smali" ]; then
         log_error "Decompilation produced no smali directory"

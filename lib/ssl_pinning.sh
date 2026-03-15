@@ -172,7 +172,8 @@ XML
     local manifest="${decompiled_dir}/AndroidManifest.xml"
     if [ -f "$manifest" ]; then
         if ! grep -q "networkSecurityConfig" "$manifest"; then
-            sed -i 's/<application/<application android:networkSecurityConfig="@xml\/network_security_config"/' "$manifest"
+            # Only add to the first <application tag
+            sed -i '0,/<application/{s/<application/<application android:networkSecurityConfig="@xml\/network_security_config"/}' "$manifest"
             log_success "Added networkSecurityConfig to AndroidManifest.xml"
         else
             log_info "networkSecurityConfig already present in manifest"
@@ -180,7 +181,7 @@ XML
 
         # Also ensure usesCleartextTraffic is true
         if ! grep -q "usesCleartextTraffic" "$manifest"; then
-            sed -i 's/<application/<application android:usesCleartextTraffic="true"/' "$manifest"
+            sed -i '0,/<application/{s/<application/<application android:usesCleartextTraffic="true"/}' "$manifest"
         fi
     fi
 

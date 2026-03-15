@@ -73,7 +73,9 @@ patch_frida_library_detection() {
         while IFS= read -r file; do
             [ -z "$file" ] && continue
             # Replace the detection string with something harmless
-            sed -i "s/\"${pattern}/\"noop_${pattern//frida/check}/g" "$file"
+            local safe_name
+            safe_name=$(echo "$pattern" | tr 'a-z' 'n-za-m')
+            sed -i "s/\"${pattern}/\"noop_${safe_name}/g" "$file"
             total_count=$((total_count + 1))
         done <<< "$files"
     done
