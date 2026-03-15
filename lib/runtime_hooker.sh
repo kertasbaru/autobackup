@@ -157,9 +157,7 @@ inject_frida_gadget() {
         mkdir -p "${target_lib_dir}"
 
         # Copy gadget as libfrida-gadget.so
-        cp "${gadget_file}" "${target_lib_dir}/libfrida-gadget.so"
-
-        if [[ $? -eq 0 ]]; then
+        if cp "${gadget_file}" "${target_lib_dir}/libfrida-gadget.so"; then
             log_success "Injected frida-gadget into lib/${arch}/libfrida-gadget.so"
             injected=1
         else
@@ -230,7 +228,8 @@ inject_gadget_config() {
     if [[ -d "${lib_dir}" ]]; then
         for arch_dir in "${lib_dir}"/*/; do
             if [[ -f "${arch_dir}/libfrida-gadget.so" ]]; then
-                # Config file must be named libfrida-gadget.config.so (same stem + .config.so)
+                # Config must use .config.so extension so it survives APK packaging
+                # (APK build tools strip non-.so files from lib/ directories)
                 echo "${config_content}" > "${arch_dir}/libfrida-gadget.config.so"
                 log_info "Gadget config placed in $(basename "${arch_dir}")"
             fi

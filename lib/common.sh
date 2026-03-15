@@ -101,11 +101,13 @@ backup_apk() {
 }
 
 # Write findings to key output directory
+# Usage (apk_name form):  write_finding "apk_name" "category" "content line"
+# Usage (dir path form):  write_finding "/full/path/dir" "file.txt" "line1" "line2" ...
 write_finding() {
     local output_dir="$1"
     local category="$2"
     shift 2
-    # If output_dir doesn't look like a path with /, treat first arg as apk_name
+    # If output_dir has no slash, treat it as an apk_name under KEY_OUTPUT_DIR
     if [[ "$output_dir" != */* ]]; then
         output_dir="${KEY_OUTPUT_DIR}/${output_dir}"
     fi

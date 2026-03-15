@@ -380,10 +380,10 @@ main() {
     if [ "$DO_HOOK" = true ]; then
         local key_dir="${KEY_OUTPUT_DIR}/${apk_basename}"
         mkdir -p "${key_dir}"
-        inject_frida_gadget "$decompiled_dir" "${key_dir}"
-        generate_hook_instructions "$apk_basename" "${key_dir}"
 
-        write_report "$apk_basename" "
+        if inject_frida_gadget "$decompiled_dir" "${key_dir}"; then
+            generate_hook_instructions "$apk_basename" "${key_dir}"
+            write_report "$apk_basename" "
 --- Runtime Hooking ---
 Frida-gadget injected for automatic runtime hooking.
 When the modified APK is installed and launched:
@@ -392,6 +392,14 @@ When the modified APK is installed and launched:
   - Results saved to /sdcard/Download/modify/key/${apk_basename}/
   - See runtime_hooks.txt for detailed instructions
 "
+        else
+            write_report "$apk_basename" "
+--- Runtime Hooking ---
+WARNING: Frida-gadget injection failed.
+Use attach mode instead (requires frida-server on device):
+  frida -U -l hooks/combined_hooks.js -f <package_name> --no-pause
+"
+        fi
     fi
 
     # Rebuild if requested
