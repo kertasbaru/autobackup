@@ -1,6 +1,7 @@
 require('dotenv').config();
 const axios = require('axios');
 const { v4: uuidv4 } = require('uuid');
+const { getAccessToken } = require('./auth');
 
 async function fetchUnifiedHistories(options = {}) {
   const {
@@ -18,16 +19,12 @@ async function fetchUnifiedHistories(options = {}) {
     throw new Error('startTime and endTime are required');
   }
 
-  const bearerToken = process.env.GOPAY_BEARER_TOKEN;
+  const bearerToken = await getAccessToken();
   const sessionId = process.env.GOPAY_SESSION_ID;
   const d1 = process.env.GOPAY_D1;
   const appVersion = process.env.GOPAY_APP_VERSION || '1.22.0';
   const location = process.env.GOPAY_X_LOCATION;
   const m1 = process.env.GOPAY_X_M1;
-
-  if (!bearerToken) {
-    throw new Error('GOPAY_BEARER_TOKEN environment variable is required');
-  }
 
   const config = {
     method: 'GET',
