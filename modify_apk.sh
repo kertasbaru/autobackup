@@ -6,9 +6,10 @@
 #   1. SSL Pinning Bypass
 #   2. Signature Verification Bypass (SignatureKiller)
 #   3. Anti-Frida/Root/Emulator Detection Bypass
-#   4. Secret Key & IV Parameter Extraction
+#   4. Secret Key & IV Parameter Extraction (Static)
 #   5. Encryption/Decryption Method Analysis
-#   6. APK Rebuild & Re-signing
+#   6. Runtime Hooking (frida-gadget injection for auto key extraction)
+#   7. APK Rebuild & Re-signing
 #
 # Usage:
 #   bash modify_apk.sh <path-to-apk> [options]
@@ -18,16 +19,20 @@
 #   --sig-only         Only bypass signature verification
 #   --anti-frida-only  Only bypass anti-Frida/root detection
 #   --extract-only     Only extract secrets (no patching)
+#   --hook             Inject frida-gadget for auto runtime hooking
+#   --hook-only        Only inject frida-gadget (no static patching)
+#   --hook-type <type> Hook type: all, crypto, headers (default: all)
 #   --no-rebuild       Skip APK rebuild
 #   --output <path>    Custom output path for modified APK
 #   --help             Show this help message
 #
 # Output:
-#   Modified APK  -> storage/downloads/modify/output/
-#   Extracted keys -> storage/downloads/modify/key/<apk_name>/
-#   Reports       -> storage/downloads/modify/key/<apk_name>/report.txt
-#   Logs          -> storage/downloads/modify/logs/
-#   Backups       -> storage/downloads/modify/backup/
+#   Modified APK    -> storage/downloads/modify/output/
+#   Extracted keys  -> storage/downloads/modify/key/<apk_name>/
+#   Runtime keys    -> /sdcard/Download/modify/key/<package>/ (on device)
+#   Reports         -> storage/downloads/modify/key/<apk_name>/report.txt
+#   Logs            -> storage/downloads/modify/logs/
+#   Backups         -> storage/downloads/modify/backup/
 #
 # References:
 #   - apktool: https://github.com/iBotPeaches/Apktool
@@ -48,6 +53,7 @@ source "${SCRIPT_DIR}/lib/signature_killer.sh"
 source "${SCRIPT_DIR}/lib/anti_frida.sh"
 source "${SCRIPT_DIR}/lib/secret_extractor.sh"
 source "${SCRIPT_DIR}/lib/apk_builder.sh"
+source "${SCRIPT_DIR}/lib/runtime_hooker.sh"
 
 # Default options
 DO_SSL=true
@@ -55,6 +61,8 @@ DO_SIG=true
 DO_ANTI_FRIDA=true
 DO_EXTRACT=true
 DO_REBUILD=true
+DO_HOOK=false
+HOOK_TYPE="all"
 CUSTOM_OUTPUT=""
 APK_PATH=""
 
@@ -72,6 +80,11 @@ Options:
   --sig-only         Only bypass signature verification
   --anti-frida-only  Only bypass anti-Frida/root detection
   --extract-only     Only extract secrets (no patching)
+  --hook             Inject frida-gadget for automatic runtime hooking
+                     (auto-extracts keys, IVs, headers when app runs)
+  --hook-only        Only inject frida-gadget (no static patching)
+  --hook-type <type> Hook type: all, crypto, headers (default: all)
+  --attach <pkg>     Attach Frida to running app (requires frida-server)
   --no-rebuild       Skip APK rebuild (keep decompiled directory)
   --output <path>    Custom output path for modified APK
   --debug            Enable debug logging
@@ -98,13 +111,23 @@ Features:
      - Emulator detection bypass
      - App made debuggable
 
-  4. Secret Extraction & Crypto Analysis
+  4. Secret Extraction & Crypto Analysis (Static)
      - AES/DES/RSA key extraction
      - IV parameter detection
      - API key & token extraction
      - Firebase configuration extraction
      - Full encryption/decryption method analysis
      - URL & API endpoint extraction
+
+  5. Runtime Hooking (--hook)
+     - Injects frida-gadget into the APK
+     - Auto-hooks crypto operations when app launches
+     - Captures secret keys, IVs, encryption/decryption at runtime
+     - Intercepts HTTP header construction (OkHttp, HttpURLConnection)
+     - Captures JWT tokens, auth headers, HMAC signatures
+     - Results saved to /sdcard/Download/modify/key/<package>/
+       - runtime_keys.txt    (keys, IVs, cipher ops)
+       - runtime_headers.txt (headers, tokens, auth)
 
 Output Locations:
   Modified APK  -> ~/storage/downloads/modify/output/
@@ -131,22 +154,40 @@ parse_args() {
                 DO_SIG=false
                 DO_ANTI_FRIDA=false
                 DO_EXTRACT=false
+                DO_HOOK=false
                 ;;
             --sig-only)
                 DO_SSL=false
                 DO_ANTI_FRIDA=false
                 DO_EXTRACT=false
+                DO_HOOK=false
                 ;;
             --anti-frida-only)
                 DO_SSL=false
                 DO_SIG=false
                 DO_EXTRACT=false
+                DO_HOOK=false
                 ;;
             --extract-only)
                 DO_SSL=false
                 DO_SIG=false
                 DO_ANTI_FRIDA=false
+                DO_HOOK=false
                 DO_REBUILD=false
+                ;;
+            --hook)
+                DO_HOOK=true
+                ;;
+            --hook-only)
+                DO_SSL=false
+                DO_SIG=false
+                DO_ANTI_FRIDA=false
+                DO_EXTRACT=false
+                DO_HOOK=true
+                ;;
+            --hook-type)
+                shift
+                HOOK_TYPE="$1"
                 ;;
             --no-rebuild)
                 DO_REBUILD=false
@@ -254,6 +295,15 @@ print_summary() {
 
     echo -e "  Keys/Secrets: ${CYAN}${KEY_OUTPUT_DIR}/${apk_name}/${NC}"
     echo -e "  Report:       ${CYAN}${KEY_OUTPUT_DIR}/${apk_name}/report.txt${NC}"
+
+    if [ "$DO_HOOK" = true ]; then
+        echo ""
+        echo -e "  ${GREEN}Runtime Hooking:${NC}"
+        echo -e "    1. Deploy hooks:  ${CYAN}bash ${KEY_OUTPUT_DIR}/${apk_name}/deploy_hooks.sh${NC}"
+        echo -e "    2. Install APK:   ${CYAN}adb install -r ${output_apk:-<modified_apk>}${NC}"
+        echo -e "    3. Launch app and use it normally"
+        echo -e "    4. Pull results:  ${CYAN}adb pull /sdcard/Download/modify/key/${apk_name}/ .${NC}"
+    fi
     echo ""
 
     if [ -d "${KEY_OUTPUT_DIR}/${apk_name}" ]; then
@@ -324,6 +374,24 @@ main() {
 
     if [ "$DO_EXTRACT" = true ]; then
         extract_secrets "$decompiled_dir" "$apk_basename"
+    fi
+
+    # Inject frida-gadget for automatic runtime hooking
+    if [ "$DO_HOOK" = true ]; then
+        local key_dir="${KEY_OUTPUT_DIR}/${apk_basename}"
+        mkdir -p "${key_dir}"
+        inject_frida_gadget "$decompiled_dir" "${key_dir}"
+        generate_hook_instructions "$apk_basename" "${key_dir}"
+
+        write_report "$apk_basename" "
+--- Runtime Hooking ---
+Frida-gadget injected for automatic runtime hooking.
+When the modified APK is installed and launched:
+  - Crypto operations are intercepted (keys, IVs, cipher modes)
+  - HTTP headers are captured (auth tokens, JWT, HMAC)
+  - Results saved to /sdcard/Download/modify/key/${apk_basename}/
+  - See runtime_hooks.txt for detailed instructions
+"
     fi
 
     # Rebuild if requested

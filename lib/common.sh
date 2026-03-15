@@ -102,13 +102,24 @@ backup_apk() {
 
 # Write findings to key output directory
 write_finding() {
-    local apk_name="$1"
+    local output_dir="$1"
     local category="$2"
-    local content="$3"
-    local output_dir="${KEY_OUTPUT_DIR}/${apk_name}"
+    shift 2
+    # If output_dir doesn't look like a path with /, treat first arg as apk_name
+    if [[ "$output_dir" != */* ]]; then
+        output_dir="${KEY_OUTPUT_DIR}/${output_dir}"
+    fi
     mkdir -p "$output_dir"
-    local file="${output_dir}/${category}.txt"
-    echo "$content" >> "$file"
+    local file="${output_dir}/${category}"
+    # Ensure .txt extension
+    [[ "$file" != *.txt ]] && file="${file}.txt"
+    for line in "$@"; do
+        echo "$line" >> "$file"
+    done
+    # If no extra args were passed, content is empty (just creates file)
+    if [ $# -eq 0 ]; then
+        touch "$file"
+    fi
 }
 
 # Write a report section

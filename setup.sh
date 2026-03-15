@@ -222,6 +222,22 @@ install_python_deps() {
     pip install --quiet --upgrade pip 2>/dev/null || true
     pip install --quiet androguard 2>/dev/null \
         || log_warn "androguard installation failed (optional for advanced analysis)"
+
+    log_step "Installing Frida tools for runtime hooking..."
+    pip install --quiet frida-tools 2>/dev/null \
+        || log_warn "frida-tools installation failed (needed for runtime hooking)"
+    pip install --quiet frida 2>/dev/null \
+        || log_warn "frida installation failed (needed for runtime hooking)"
+}
+
+install_xz() {
+    log_step "Installing xz-utils (needed to decompress frida-gadget)..."
+    if command -v xz &>/dev/null; then
+        log_info "xz already installed"
+    else
+        pkg install -y xz-utils 2>/dev/null \
+            || log_warn "xz-utils installation failed (needed for frida-gadget decompression)"
+    fi
 }
 
 create_output_dirs() {
@@ -245,6 +261,7 @@ print_summary() {
     echo ""
     echo -e "  ${GREEN}Usage:${NC}"
     echo -e "    bash modify_apk.sh <path-to-apk>"
+    echo -e "    bash modify_apk.sh <path-to-apk> --hook  ${CYAN}# inject runtime hooking${NC}"
     echo -e "    bash modify_apk.sh --help"
     echo ""
     echo -e "${BLUE}=========================================${NC}"
@@ -265,6 +282,7 @@ main() {
     install_uber_apk_signer
     generate_keystore
     install_python_deps
+    install_xz
     create_output_dirs
     print_summary
 }
